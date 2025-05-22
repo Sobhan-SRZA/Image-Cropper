@@ -112,6 +112,12 @@
         let mode = null, dir = null, start = {};
         const minSize = 20;
 
+        // Helper to get pointer coordinates (mouse or touch)
+        function getClient(e, axis) {
+            if (e.touches) return axis === 'x' ? e.touches[0].clientX : e.touches[0].clientY;
+            return axis === 'x' ? e.clientX : e.clientY;
+        }
+
         fileInput.addEventListener('change', e => {
             const file = e.target.files[0]; if (!file) return;
             img.src = URL.createObjectURL(file);
@@ -127,7 +133,9 @@
 
         function getDir(e) {
             const r = overlay.getBoundingClientRect();
-            const x = e.clientX - r.left, y = e.clientY - r.top, t = 10;
+            const x = getClient(e, 'x') - r.left;
+            const y = getClient(e, 'y') - r.top;
+            const t = 10;
             const left = x < t, right = x > r.width - t;
             const top = y < t, bottom = y > r.height - t;
             if (left && top) return 'nw';
@@ -141,26 +149,28 @@
             return null;
         }
 
-        overlay.addEventListener('mousedown', e => {
+        ['mousedown', 'touchstart'].forEach(evt => overlay.addEventListener(evt, e => {
+            e.preventDefault();
             dir = getDir(e); mode = dir ? 'resize' : 'move';
             const r = overlay.getBoundingClientRect();
             const pr = wrapper.getBoundingClientRect();
             start = {
-                mx: e.clientX, my: e.clientY,
+                mx: getClient(e, 'x'), my: getClient(e, 'y'),
                 ox: r.left - pr.left, oy: r.top - pr.top,
                 ow: r.width, oh: r.height
             };
             document.body.style.cursor = mode === 'move' ? 'move' : (['n', 's'].includes(dir) ? 'ns-resize' : ['e', 'w'].includes(dir) ? 'ew-resize' : (['ne', 'sw'].includes(dir) ? 'nesw-resize' : 'nwse-resize'));
-            e.preventDefault();
-        });
+        }));
 
-        document.addEventListener('mousemove', e => {
+        ['mousemove', 'touchmove'].forEach(evt => document.addEventListener(evt, e => {
             if (!mode) {
                 const d = getDir(e);
                 overlay.style.cursor = d ? (['n', 's'].includes(d) ? 'ns-resize' : ['e', 'w'].includes(d) ? 'ew-resize' : (['ne', 'sw'].includes(d) ? 'nesw-resize' : 'nwse-resize')) : 'move';
                 return;
             }
-            const dx = e.clientX - start.mx, dy = e.clientY - start.my;
+            e.preventDefault();
+            const dx = getClient(e, 'x') - start.mx;
+            const dy = getClient(e, 'y') - start.my;
             let x = start.ox, y = start.oy, w = start.ow, h = start.oh;
             const dispW = img.clientWidth, dispH = img.clientHeight;
 
@@ -183,9 +193,9 @@
             }
             overlay.style.left = x + 'px'; overlay.style.top = y + 'px';
             overlay.style.width = w + 'px'; overlay.style.height = h + 'px';
-        });
+        }));
 
-        document.addEventListener('mouseup', () => { mode = null; dir = null; document.body.style.cursor = ''; });
+        ['mouseup', 'touchend', 'touchcancel'].forEach(evt => document.addEventListener(evt, () => { mode = null; dir = null; document.body.style.cursor = ''; }));
 
         cropBtn.addEventListener('click', () => {
             const or = overlay.getBoundingClientRect();
