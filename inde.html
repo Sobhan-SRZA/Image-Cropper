@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="fa">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Custom Image Cropper</title>
+    <style>
+        body {
+            background: #121212;
+            color: #fff;
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+
+            align-items: center;
+            text-align: center;
+        }
+
+        .cropper-container {
+            max-width: 800px;
+            width: 100%;
+            position: relative;
+        }
+
+        .image-wrapper {
+            position: relative;
+            display: inline-block;
+            margin-top: 20px;
+        }
+
+        #sourceImage {
+            max-width: 100%;
+            display: block;
+        }
+
+        #overlay {
+            position: absolute;
+            border: 2px dashed #fff;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            box-sizing: border-box;
+        }
+
+        #cropBtn {
+            margin-bottom: 30px;
+        }
+
+        #controls {
+            margin-top: 20px;
+        }
+
+        button {
+            background: #1e1e1e;
+            border: 1px solid #444;
+            color: #fff;
+            padding: 10px 20px;
+            margin-right: 10px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        button:disabled {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #resultCanvas {
+            display: none;
+            max-width: 800px;
+            width: 100%;
+            margin-top: 20px;
+            border: 1px solid #444;
+        }
+
+        #downloadBtn {
+            display: none;
+            margin-top: 10px;
+            text-decoration: none;
+            background: #1e1e1e;
+            padding: 10px 20px;
+            border: 1px solid #444;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="cropper-container">
+        <input type="file" id="fileInput" accept="image/*" />
+        <div class="image-wrapper" id="wrapper">
+            <img id="sourceImage" />
+            <div id="overlay"></div>
+        </div>
+        <div id="controls">
+            <button id="cropBtn" disabled>Crop</button>
+            <canvas id="resultCanvas"></canvas>
+        </div>
+        <a id="downloadBtn" download="cropped.png">Download Cropped Image</a>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const img = document.getElementById('sourceImage');
+        const overlay = document.getElementById('overlay');
+        const wrapper = document.getElementById('wrapper');
+        const cropBtn = document.getElementById('cropBtn');
+        const canvas = document.getElementById('resultCanvas');
+        const downloadBtn = document.getElementById('downloadBtn');
+
+        let mode = null, dir = null, start = {};
+        const minSize = 20;
+
+        fileInput.addEventListener('change', e => {
+            const file = e.target.files[0]; if (!file) return;
+            img.src = URL.createObjectURL(file);
+            img.onload = () => {
+                overlay.style.display = 'block'; cropBtn.disabled = false;
+                const dispW = img.clientWidth, dispH = img.clientHeight;
+                const w = dispW * 0.5, h = dispH * 0.5;
+                overlay.style.width = w + 'px'; overlay.style.height = h + 'px';
+                overlay.style.left = (img.offsetLeft + dispW / 2 - w / 2) + 'px';
+                overlay.style.top = (img.offsetTop + dispH / 2 - h / 2) + 'px';
+            };
+        });
+
+        function getDir(e) {
+            const r = overlay.getBoundingClientRect();
+            const x = e.clientX - r.left, y = e.clientY - r.top, t = 10;
+            const left = x < t, right = x > r.width - t;
+            const top = y < t, bottom = y > r.height - t;
+            if (left && top) return 'nw';
+            if (right && top) return 'ne';
+            if (left && bottom) return 'sw';
+            if (right && bottom) return 'se';
+            if (top) return 'n';
+            if (bottom) return 's';
+            if (left) return 'w';
+            if (right) return 'e';
+            return null;
+        }
+
+        overlay.addEventListener('mousedown', e => {
+            dir = getDir(e); mode = dir ? 'resize' : 'move';
+            const r = overlay.getBoundingClientRect();
+            const pr = wrapper.getBoundingClientRect();
+            start = {
+                mx: e.clientX, my: e.clientY,
+                ox: r.left - pr.left, oy: r.top - pr.top,
+                ow: r.width, oh: r.height
+            };
+            document.body.style.cursor = mode === 'move' ? 'move' : (['n', 's'].includes(dir) ? 'ns-resize' : ['e', 'w'].includes(dir) ? 'ew-resize' : (['ne', 'sw'].includes(dir) ? 'nesw-resize' : 'nwse-resize'));
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', e => {
+            if (!mode) {
+                const d = getDir(e);
+                overlay.style.cursor = d ? (['n', 's'].includes(d) ? 'ns-resize' : ['e', 'w'].includes(d) ? 'ew-resize' : (['ne', 'sw'].includes(d) ? 'nesw-resize' : 'nwse-resize')) : 'move';
+                return;
+            }
+            const dx = e.clientX - start.mx, dy = e.clientY - start.my;
+            let x = start.ox, y = start.oy, w = start.ow, h = start.oh;
+            const dispW = img.clientWidth, dispH = img.clientHeight;
+
+            if (mode === 'move') {
+                x = Math.min(Math.max(0, start.ox + dx), dispW - start.ow);
+                y = Math.min(Math.max(0, start.oy + dy), dispH - start.oh);
+            } else {
+                if (dir.includes('e')) w = Math.min(Math.max(minSize, start.ow + dx), dispW - start.ox);
+                if (dir.includes('s')) h = Math.min(Math.max(minSize, start.oh + dy), dispH - start.oy);
+                if (dir.includes('w')) {
+                    let newX = Math.min(Math.max(0, start.ox + dx), start.ox + start.ow - minSize);
+                    w = start.ow + (start.ox - newX);
+                    x = newX;
+                }
+                if (dir.includes('n')) {
+                    let newY = Math.min(Math.max(0, start.oy + dy), start.oy + start.oh - minSize);
+                    h = start.oh + (start.oy - newY);
+                    y = newY;
+                }
+            }
+            overlay.style.left = x + 'px'; overlay.style.top = y + 'px';
+            overlay.style.width = w + 'px'; overlay.style.height = h + 'px';
+        });
+
+        document.addEventListener('mouseup', () => { mode = null; dir = null; document.body.style.cursor = ''; });
+
+        cropBtn.addEventListener('click', () => {
+            const or = overlay.getBoundingClientRect();
+            const ir = img.getBoundingClientRect();
+            const scaleX = img.naturalWidth / ir.width;
+            const scaleY = img.naturalHeight / ir.height;
+            const sx = (or.left - ir.left) * scaleX;
+            const sy = (or.top - ir.top) * scaleY;
+            const sw = or.width * scaleX;
+            const sh = or.height * scaleY;
+            canvas.width = sw; canvas.height = sh;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+            canvas.style.display = 'block';
+            canvas.toBlob(blob => { downloadBtn.href = URL.createObjectURL(blob); downloadBtn.style.display = 'inline-block'; });
+        });
+    </script>
+</body>
+
+</html>
